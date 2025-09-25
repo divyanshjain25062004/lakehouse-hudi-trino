@@ -1,6 +1,10 @@
 # Ignore jars and data
-/jars/
-/data/
+/jars/*
+!/jars/.gitkeep
+/data/*
+!/data/.gitkeep
+!/data/*/
+!/data/**/.gitkeep
 
 # Python cache
 __pycache__/
