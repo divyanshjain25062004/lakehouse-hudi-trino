@@ -1,0 +1,15 @@
+# Ignore jars and data
+/jars/
+/data/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VSCode & OS stuff
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+*.log
