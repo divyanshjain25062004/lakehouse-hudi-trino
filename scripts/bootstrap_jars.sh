@@ -38,4 +38,10 @@ download \
   "https://repo1.maven.org/maven2/org/apache/hudi/hudi-hadoop-mr-bundle/${HUDI_VERSION}/hudi-hadoop-mr-bundle-${HUDI_VERSION}.jar" \
   "$JAR_DIR/hudi-hadoop-mr-bundle-${HUDI_VERSION}.jar"
 
+
+curl -L "https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_VERSION}/postgresql-${POSTGRES_VERSION}.jar" -o "$JAR_DIR/postgresql-${POSTGRES_VERSION}.jar"
+curl -L "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar" -o "$JAR_DIR/hadoop-aws-${HADOOP_AWS_VERSION}.jar"
+curl -L "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_VERSION}/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar" -o "$JAR_DIR/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar"
+
+
 echo "Downloaded supporting JARs into $JAR_DIR"

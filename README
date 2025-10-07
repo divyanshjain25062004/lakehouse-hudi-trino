@@ -3,7 +3,6 @@
 This repository provisions a self-contained lakehouse environment for experimenting with Apache Hudi over MinIO storage and querying the data through Trino. The stack mirrors the architecture described in the assignment brief and ships with an ingestion job that reshapes the public Johns Hopkins COVID-19 dataset into a Hudi table.
 
 ---
-
 ## 1. Windows 11 + VS Code Walkthrough
 
 The project runs entirely in Docker containers, so the recommended Windows 11 workflow is to use Docker Desktop with WSL 2 and Visual Studio Code. The following steps assume you have administrator rights on the machine.
@@ -81,9 +80,7 @@ The project runs entirely in Docker containers, so the recommended Windows 11 wo
 
 > **Tip:** Because the repo lives inside the WSL filesystem, file changes made in VS Code sync directly to the Linux environment that Docker sees, avoiding path-mapping issues between Windows and Linux.
 
----
 
-## 2. Prerequisites
 
 * Docker and Docker Compose v2
 * ~4 GB free disk space for containers, the dataset, and local object storage
@@ -106,6 +103,9 @@ curl -L \
 Populate the `jars/` directory with the helper dependencies required by Hive Metastore and Spark (the Docker Compose file mounts
 them into Hive's `HIVE_AUX_JARS_PATH` and the Spark driver's extra classpath):
 
+Populate the `jars/` directory with the helper dependencies required by Hive Metastore and Spark:
+
+
 ```bash
 ./scripts/bootstrap_jars.sh
 ```
@@ -116,6 +116,10 @@ containers have every dependency available from the host volume without fetching
 ---
 
 ## 3. Boot the Lakehouse Services
+
+---
+
+## 2. Boot the Lakehouse Services
 
 Start the core services (MinIO, Postgres, Hive Metastore, and Trino):
 
@@ -134,8 +138,6 @@ Useful URLs:
 * MinIO console: http://localhost:9001 (user: `minio`, password: `minio123`)
 * Trino web UI: http://localhost:8080 (no authentication)
 
----
-
 ## 4. Run the Spark → Hudi Ingestion Job
 
 The ingestion job lives in `ingest/spark_hudi_ingest.py`. It reads the wide CSV dataset, normalises it to a long format, enriches it with Hudi metadata, and writes a Copy-On-Write Hudi table to MinIO while registering the table in Hive Metastore.
@@ -148,23 +150,47 @@ Submit the job entirely through Docker using the helper script (it resolves the 
 
 The script ensures the dataset exists, verifies that all supporting JARs are available, and then runs `spark-submit` inside the Docker container using the mounted volumes. On success you should see a log similar to:
 
+## 3. Run the Spark → Hudi Ingestion Job
+
+The ingestion job lives in `ingest/spark_hudi_ingest.py`. It reads the wide CSV dataset, normalises it to a long format, enriches it with Hudi metadata, and writes a Copy-On-Write Hudi table to MinIO while registering the table in Hive Metastore.
+
+Submit the job through the Spark container with the required dependencies provided via Maven coordinates:
+
+```bash
+docker compose run --rm \
+  -e COVID19_RAW_PATH=/data/raw/covid19.csv \
+  -e HUDI_OUTPUT_PATH=s3a://hudi-datasets/covid19 \
+  spark \
+  /opt/bitnami/spark/bin/spark-submit \
+    --master local[2] \
+    --packages \
+org.apache.hudi:hudi-spark3.3-bundle_2.12:0.14.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.7.3 \
+    --conf spark.sql.hive.convertMetastoreParquet=false \
+    --conf spark.sql.catalogImplementation=hive \
+    ingest/spark_hudi_ingest.py
+```
+
+The command mounts the repository inside the container (see `docker-compose.yml`), so the script and dataset are directly accessible. On success you should see a log similar to:
+
+
 ```
 ✅ Ingest complete: default.covid19 registered with 2,000+ rows.
 ```
 
 The table will be available under the `s3a://hudi-datasets/covid19` prefix inside MinIO.
 
----
 
-## 5. Query the Data in Trino
+## 4. Query the Data in Trino
 
 With the ingestion complete, open the Trino CLI within the container to query the dataset:
 
 ```bash
 docker compose exec trino trino --catalog hive --schema default
 ```
-
 Sample queries (also available in [`trino/queries/covid19_exploration.sql`](trino/queries/covid19_exploration.sql)):
+
+Sample queries:
+
 
 ```sql
 SHOW TABLES;
@@ -184,8 +210,8 @@ LIMIT 10;
 You can also browse http://localhost:8080 to issue the same queries via the Trino web UI.
 
 ---
-
 ## 6. Tear Down
+
 
 When finished, stop the environment:
 
@@ -203,6 +229,7 @@ rm -rf data/minio data/postgres s3-data
 
 ## 7. Project Structure
 
+
 ```
 ├── docker-compose.yml        # Defines MinIO, Postgres, Hive Metastore, Trino, Spark services
 ├── ingest/
@@ -215,6 +242,7 @@ rm -rf data/minio data/postgres s3-data
     │   └── hive.properties   # Hive connector configuration pointing to MinIO & Hive Metastore
     └── queries/
         └── covid19_exploration.sql  # Ready-to-run SQL snippets for Trino
+
 ```
 
 Happy querying! If you encounter issues, double-check that all services are healthy and that the dataset/JAR downloads completed successfully.
