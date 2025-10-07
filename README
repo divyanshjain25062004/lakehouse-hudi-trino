@@ -3,8 +3,84 @@
 This repository provisions a self-contained lakehouse environment for experimenting with Apache Hudi over MinIO storage and querying the data through Trino. The stack mirrors the architecture described in the assignment brief and ships with an ingestion job that reshapes the public Johns Hopkins COVID-19 dataset into a Hudi table.
 
 ---
+## 1. Windows 11 + VS Code Walkthrough
 
-## 1. Prerequisites
+The project runs entirely in Docker containers, so the recommended Windows 11 workflow is to use Docker Desktop with WSL 2 and Visual Studio Code. The following steps assume you have administrator rights on the machine.
+
+1. **Install Windows Subsystem for Linux 2 (WSL 2)**
+   - Open PowerShell as Administrator and run:
+     ```powershell
+     wsl --install
+     ```
+   - Restart when prompted. This installs the default Ubuntu distribution, which Docker Desktop and VS Code can target.
+   - Launch the Ubuntu app once so it can finish the first-time setup and create your Linux user.
+
+2. **Install Docker Desktop for Windows**
+   - Download it from https://www.docker.com/products/docker-desktop/ and run the installer.
+   - During setup, enable the options for *Use WSL 2 instead of Hyper-V* and *Add shortcut to desktop*.
+   - After installation, open Docker Desktop → **Settings → Resources → WSL Integration** and switch on integration for the Ubuntu distribution created in the previous step.
+   - Confirm Docker is working inside WSL by opening the Ubuntu terminal and running `docker --version`.
+
+3. **Install Visual Studio Code with Remote Extensions**
+   - Install VS Code from https://code.visualstudio.com/.
+   - Launch VS Code and install the following extensions:
+     * *WSL* (ms-vscode-remote.remote-wsl)
+     * *Docker* (ms-azuretools.vscode-docker) – optional but helpful for monitoring containers
+   - From the VS Code Command Palette (`Ctrl+Shift+P`), choose **WSL: Connect to WSL using Distro...** and select Ubuntu. VS Code will reopen connected to the Linux environment.
+
+4. **Clone the repository inside WSL**
+   - In the VS Code integrated terminal (now pointing at Ubuntu), run:
+     ```bash
+     git clone https://github.com/<your-org>/lakehouse-hudi-trino.git
+     cd lakehouse-hudi-trino
+     ```
+   - Ensure the persistent directories exist: `mkdir -p data/raw data/minio data/postgres`.
+
+5. **Download dependencies from WSL**
+   - Fetch the COVID-19 dataset:
+     ```bash
+     curl -L \
+       https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv \
+       -o data/raw/covid19.csv
+     ```
+   - Download the supporting JARs (requires Maven Central access):
+     ```bash
+     ./scripts/bootstrap_jars.sh
+     ```
+
+6. **Start the Docker stack from VS Code’s terminal**
+   - Bring the services up:
+     ```bash
+     docker compose up -d minio postgres hive-metastore trino spark
+     ```
+   - Watch the logs if needed: `docker compose logs -f`.
+   - Validate container health: `docker compose ps`.
+
+7. **Run the Spark ingestion job**
+   - Execute the helper script (still inside WSL):
+     ```bash
+     ./scripts/run_ingest.sh
+     ```
+   - The script runs `spark-submit` inside the `spark` container and will register the `default.covid19` table in Hive Metastore.
+
+8. **Query the data with Trino**
+   - Open the Trino CLI inside the container:
+     ```bash
+     docker compose exec trino trino --catalog hive --schema default
+     ```
+   - Paste the assignment queries (they are also saved in [`trino/queries/covid19_exploration.sql`](trino/queries/covid19_exploration.sql)).
+   - Optionally, browse to http://localhost:8080 in your Windows browser to use the Trino web UI.
+
+9. **Stop services when finished**
+   - In VS Code’s terminal:
+     ```bash
+     docker compose down
+     ```
+   - Remove persisted volumes if you want a clean slate: `rm -rf data/minio data/postgres`.
+
+> **Tip:** Because the repo lives inside the WSL filesystem, file changes made in VS Code sync directly to the Linux environment that Docker sees, avoiding path-mapping issues between Windows and Linux.
+
+
 
 * Docker and Docker Compose v2
 * ~4 GB free disk space for containers, the dataset, and local object storage
@@ -24,11 +100,22 @@ curl -L \
   -o data/raw/covid19.csv
 ```
 
+Populate the `jars/` directory with the helper dependencies required by Hive Metastore and Spark (the Docker Compose file mounts
+them into Hive's `HIVE_AUX_JARS_PATH` and the Spark driver's extra classpath):
+
 Populate the `jars/` directory with the helper dependencies required by Hive Metastore and Spark:
+
 
 ```bash
 ./scripts/bootstrap_jars.sh
 ```
+
+This downloads the Apache Hudi bundles along with the Hadoop AWS, AWS SDK, and Postgres JDBC drivers so that the Docker
+containers have every dependency available from the host volume without fetching artifacts at runtime.
+
+---
+
+## 3. Boot the Lakehouse Services
 
 ---
 
@@ -51,7 +138,17 @@ Useful URLs:
 * MinIO console: http://localhost:9001 (user: `minio`, password: `minio123`)
 * Trino web UI: http://localhost:8080 (no authentication)
 
----
+## 4. Run the Spark → Hudi Ingestion Job
+
+The ingestion job lives in `ingest/spark_hudi_ingest.py`. It reads the wide CSV dataset, normalises it to a long format, enriches it with Hudi metadata, and writes a Copy-On-Write Hudi table to MinIO while registering the table in Hive Metastore.
+
+Submit the job entirely through Docker using the helper script (it resolves the downloaded JARs and injects them into the Spark container automatically):
+
+```bash
+./scripts/run_ingest.sh
+```
+
+The script ensures the dataset exists, verifies that all supporting JARs are available, and then runs `spark-submit` inside the Docker container using the mounted volumes. On success you should see a log similar to:
 
 ## 3. Run the Spark → Hudi Ingestion Job
 
@@ -75,13 +172,13 @@ org.apache.hudi:hudi-spark3.3-bundle_2.12:0.14.0,org.apache.hadoop:hadoop-aws:3.
 
 The command mounts the repository inside the container (see `docker-compose.yml`), so the script and dataset are directly accessible. On success you should see a log similar to:
 
+
 ```
 ✅ Ingest complete: default.covid19 registered with 2,000+ rows.
 ```
 
 The table will be available under the `s3a://hudi-datasets/covid19` prefix inside MinIO.
 
----
 
 ## 4. Query the Data in Trino
 
@@ -90,8 +187,10 @@ With the ingestion complete, open the Trino CLI within the container to query th
 ```bash
 docker compose exec trino trino --catalog hive --schema default
 ```
+Sample queries (also available in [`trino/queries/covid19_exploration.sql`](trino/queries/covid19_exploration.sql)):
 
 Sample queries:
+
 
 ```sql
 SHOW TABLES;
@@ -111,8 +210,8 @@ LIMIT 10;
 You can also browse http://localhost:8080 to issue the same queries via the Trino web UI.
 
 ---
+## 6. Tear Down
 
-## 5. Tear Down
 
 When finished, stop the environment:
 
@@ -128,15 +227,22 @@ rm -rf data/minio data/postgres s3-data
 
 ---
 
-## 6. Project Structure
+## 7. Project Structure
+
 
 ```
 ├── docker-compose.yml        # Defines MinIO, Postgres, Hive Metastore, Trino, Spark services
 ├── ingest/
 │   └── spark_hudi_ingest.py  # Spark job for ingesting the COVID-19 dataset into Hudi
+├── scripts/
+│   ├── bootstrap_jars.sh     # Downloads the dependency jars into ./jars for Docker to mount
+│   └── run_ingest.sh         # Runs the Spark ingestion job through docker compose
 └── trino/
-    └── catalog/
-        └── hive.properties   # Hive connector configuration pointing to MinIO & Hive Metastore
+    ├── catalog/
+    │   └── hive.properties   # Hive connector configuration pointing to MinIO & Hive Metastore
+    └── queries/
+        └── covid19_exploration.sql  # Ready-to-run SQL snippets for Trino
+
 ```
 
 Happy querying! If you encounter issues, double-check that all services are healthy and that the dataset/JAR downloads completed successfully.

@@ -42,7 +42,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ./jars:/opt/hive/jars
+      - ./jars:/opt/hive/extra-jars
 
   trino:
     image: trinodb/trino:422
@@ -62,6 +62,7 @@ services:
       AWS_ACCESS_KEY_ID: minio
       AWS_SECRET_ACCESS_KEY: minio123
       AWS_REGION: us-east-1
+      SPARK_EXTRA_CLASSPATH: "/opt/bitnami/spark/extra-jars/*"
     volumes:
       - ./ingest:/ingest
       - ./data:/data
